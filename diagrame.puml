@@ -1,0 +1,260 @@
+@startuml
+left to right direction
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+
+title Ride Sharing System - UML Class Diagram
+
+' =========================
+' ENUMS
+' =========================
+enum RideType {
+  SEDAN
+  SUV
+  AUTO
+}
+
+enum TripStatus {
+  REQUESTED
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum DriverStatus {
+  OFFLINE
+  ONLINE
+  IN_TRIP
+}
+
+' =========================
+' OBSERVER
+' =========================
+abstract class TripObserver <<Observer>> {
+  +on_update(trip: Trip)
+}
+
+' =========================
+' CORE DOMAIN
+' =========================
+abstract class User {
+  -id: str
+  -name: str
+  -contact: str
+  -trip_history: List[Trip]
+  +get_id(): str
+  +get_name(): str
+  +get_contact(): str
+  +add_trip_to_history(trip: Trip): void
+  +get_trip_history(): List[Trip]
+  +on_update(trip: Trip): void
+}
+
+class Rider {
+  +on_update(trip: Trip): void
+}
+
+class Driver {
+  -vehicle: Vehicle
+  -current_location: Location
+  -status: DriverStatus
+  +get_vehicle(): Vehicle
+  +get_current_location(): Location
+  +set_current_location(location: Location): void
+  +get_status(): DriverStatus
+  +set_status(status: DriverStatus): void
+  +on_update(trip: Trip): void
+}
+
+class Vehicle {
+  -license_number: str
+  -model: str
+  -type: RideType
+  +get_license_number(): str
+  +get_model(): str
+  +get_type(): RideType
+}
+
+class Location {
+  -x: float
+  -y: float
+  +distance_to(other: Location): float
+  +__str__(): str
+}
+
+class Trip {
+  -id: str
+  -rider: Rider
+  -driver: Driver
+  -pickup_location: Location
+  -dropoff_location: Location
+  -fare: float
+  -status: TripStatus
+  -current_state: TripState
+  -observers: List[TripObserver]
+  +get_id(): str
+  +get_rider(): Rider
+  +get_driver(): Driver
+  +get_pickup_location(): Location
+  +get_dropoff_location(): Location
+  +get_fare(): float
+  +get_status(): TripStatus
+  +add_observer(observer: TripObserver): void
+  +assign_driver(driver: Driver): void
+  +start_trip(): void
+  +end_trip(): void
+}
+
+class TripBuilder <<Builder>> {
+  +with_rider(rider: Rider): TripBuilder
+  +with_pickup_location(location: Location): TripBuilder
+  +with_dropoff_location(location: Location): TripBuilder
+  +with_fare(fare: float): TripBuilder
+  +build(): Trip
+}
+
+' =========================
+' STATE
+' =========================
+abstract class TripState <<State>> {
+  +assign_driver(trip: Trip, driver: Driver): void
+  +start_trip(trip: Trip): void
+  +end_trip(trip: Trip): void
+}
+
+class RequestedState
+class AssignedState
+class InProgressState
+class CompletedState
+
+' =========================
+' STRATEGY
+' =========================
+abstract class PricingStrategy <<Strategy>> {
+  +calculate_fare(pickup: Location, dropoff: Location, ride_type: RideType): float
+}
+
+class FlatRatePricingStrategy {
+  +calculate_fare(pickup: Location, dropoff: Location, ride_type: RideType): float
+}
+
+class VehicleBasedPricingStrategy {
+  +calculate_fare(pickup: Location, dropoff: Location, ride_type: RideType): float
+}
+
+abstract class DriverMatchingStrategy <<Strategy>> {
+  +find_nearest_drivers(drivers, pickup: Location, ride_type: RideType): List[Driver]
+}
+
+class NearestDriverMatchingStrategy {
+  +find_nearest_drivers(drivers, pickup: Location, ride_type: RideType): List[Driver]
+}
+
+' =========================
+' SERVICE
+' =========================
+class RideSharingService <<Singleton>> {
+  -instance
+  -riders: Dict[str, Rider]
+  -drivers: Dict[str, Driver]
+  -trips: Dict[str, Trip]
+  -pricing_strategy: PricingStrategy
+  -driver_matching_strategy: DriverMatchingStrategy
+  +get_instance(): RideSharingService
+  +register_rider(name: str, contact: str): Rider
+  +register_driver(name: str, contact: str, vehicle: Vehicle, initial_location: Location): Driver
+  +set_pricing_strategy(strategy: PricingStrategy): void
+  +set_driver_matching_strategy(strategy: DriverMatchingStrategy): void
+  +request_ride(rider_id: str, pickup: Location, dropoff: Location, ride_type: RideType): Trip
+  +accept_ride(driver_id: str, trip_id: str): void
+  +start_trip(trip_id: str): void
+  +end_trip(trip_id: str): void
+}
+
+' =========================
+' INHERITANCE
+' =========================
+TripObserver <|.. User
+User <|-- Rider
+User <|-- Driver
+
+PricingStrategy <|-- FlatRatePricingStrategy
+PricingStrategy <|-- VehicleBasedPricingStrategy
+
+DriverMatchingStrategy <|-- NearestDriverMatchingStrategy
+
+TripState <|-- RequestedState
+TripState <|-- AssignedState
+TripState <|-- InProgressState
+TripState <|-- CompletedState
+
+' =========================
+' ASSOCIATIONS
+' =========================
+Driver "1" --> "1" Vehicle : drives
+Driver "1" --> "1" Location : current_location
+
+Trip "1" --> "1" Rider : rider
+Trip "1" --> "0..1" Driver : driver
+Trip "1" --> "1" Location : pickup
+Trip "1" --> "1" Location : dropoff
+Trip "1" *-- "1" TripState : current_state
+Trip "1" o-- "0..*" TripObserver : observers
+TripBuilder ..> Trip : builds
+
+RideSharingService "1" o-- "0..*" Rider : manages
+RideSharingService "1" o-- "0..*" Driver : manages
+RideSharingService "1" o-- "0..*" Trip : manages
+RideSharingService --> PricingStrategy : uses
+RideSharingService --> DriverMatchingStrategy : uses
+
+Vehicle --> RideType
+Driver --> DriverStatus
+Trip --> TripStatus
+
+' =========================
+' NOTES
+' =========================
+note right of RideSharingService
+Singleton:
+- instance unique
+- get_instance()
+- service central du système
+end note
+
+note right of PricingStrategy
+Strategy:
+permet de changer
+la logique de tarification
+sans modifier le service principal
+end note
+
+note right of DriverMatchingStrategy
+Strategy:
+permet de changer
+la logique de sélection
+du chauffeur
+end note
+
+note right of TripState
+State:
+le comportement du Trip
+change selon son état courant
+end note
+
+note right of TripObserver
+Observer:
+les utilisateurs reçoivent
+les notifications de changement
+de statut du trajet
+end note
+
+note right of TripBuilder
+Builder:
+construction progressive
+d'un objet Trip
+end note
+
+@enduml
